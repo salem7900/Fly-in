@@ -1,3 +1,6 @@
 maps/
 maps.tar.gz
 venv/
+try_parser.py
+config_test.txt
+__pycache__/
