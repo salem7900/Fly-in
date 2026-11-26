@@ -4,8 +4,12 @@ from models import Zone, ZoneType, Connection, Graph
 
 class ParseError(Exception):
     """Errore di parsing con riga e causa."""
-    def __init__(self, line: int, message: str) -> None:
-        super().__init__(f"Line {line}: {message}")
+    def __init__(self, line: int | None, message: str,) -> None:
+        self.line = line
+        if line is None:
+            super().__init__(message)
+        else:
+            super().__init__(f"Line {line}: {message}")
 
 
 class MapParser:
@@ -16,15 +20,24 @@ class MapParser:
     def __init__(self) -> None:
         self.nb_drones: int = 0
         self.zones: dict[str, Zone] = {}
-        self.connections: list[Connection] = []
+        self.connections: dict[frozenset[str], Connection] = {}
         self.start: str | None = None
         self.end: str | None = None
+
+    def _validate(self) -> None:
+        """Controlla che ci siano gli elementi richiesti dopo il parsing"""
+        if self.nb_drones == 0:
+            raise ParseError(None, "'nb_drones' is missing")
+        if self.start is None:
+            raise ParseError(None, "'start_hub' is missing")
+        if self.end is None:
+            raise ParseError(None, "'end_hub' is missing")
 
     def parse_file(self, path: str) -> Graph:
         with open(path, encoding="utf-8") as f:
             for line, raw in enumerate(f, start=1):
                 self._parse_line(line, raw)
-        # self._validate()
+        self._validate()
         # return self._build_graph()
 
     def _parse_line(self, line: int, raw: str) -> None:
@@ -50,12 +63,13 @@ class MapParser:
         elif key == "start_hub" or key == "end_hub" or key == "hub":
             self._parse_zones(line, key, value)
         elif key == "connection":
-            self._parse_connections(line, value)
+            self._parse_connections(line, key, value)
         else:
             raise ParseError(line, f"invalid prefix: {key}")
 
     @staticmethod
     def _parse_positive_int(line: int, value: str) -> int:
+        """Controlla che il numero sia positivo e lo trasforma in int"""
         try:
             n = int(value)
         except ValueError:
@@ -86,7 +100,7 @@ class MapParser:
 
     def _parse_metadata(
                 self, line: int, type: str, data: str) -> dict[str, Any]:
-        """"""
+        """Controlla che i metadata siano corretti e li salva in un dict"""
         data = data.strip()
         data = data.split("]", 1)[0]
 
@@ -190,5 +204,40 @@ class MapParser:
             self.end = name
         self.zones[name] = zone
 
-    def _parse_connections(self, line: int, str: str):
-        """"""
+    def _parse_connections(self, line: int, key: str, link: str) -> None:
+        """Crea un oggetto Connection che connette due Zone."""
+        data: str = ""
+        if "[" in link:
+            link, data = link.split("[", 1)
+        link = link.strip()
+        tokens = link.split("-")
+        if len(tokens) != 2:
+            raise ParseError(
+                line, f"correct format is zone1-zone2, got '{link}'")
+        zone_a, zone_b = tokens
+
+        if zone_a == zone_b:
+            raise ParseError(
+                line,
+                f"connection has to be between different zones, got '{link}'")
+        if zone_a not in self.zones:
+            raise ParseError(line,
+                             f"invalid zone in connection, got '{zone_a}'")
+        if zone_b not in self.zones:
+            raise ParseError(line,
+                             f"invalid zone in connection, got '{zone_b}'")
+        pair = frozenset({zone_a, zone_b})
+        if pair in self.connections:
+            raise ParseError(line,
+                             f"duplicate connection '{zone_a}-{zone_b}'")
+
+        metadata: dict[str, Any] = {}
+        if data:
+            metadata = self._parse_metadata(line, key, data)
+
+        connection = Connection(
+            start_zone=zone_a,
+            end_zone=zone_b,
+            max_link_capacity=metadata.get("max_link_capacity", 1),
+        )
+        self.connections[pair] = connection
