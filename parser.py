@@ -1,5 +1,7 @@
 from typing import Any
-from models import Zone, ZoneType, Connection, Graph
+
+from graph import Graph
+from models import Connection, Zone, ZoneType
 
 
 class ParseError(Exception):
@@ -25,7 +27,7 @@ class MapParser:
         self.end: str | None = None
 
     def _validate(self) -> None:
-        """Controlla che ci siano gli elementi richiesti dopo il parsing"""
+        """Controlla che ci siano gli elementi richiesti dopo il parsing."""
         if self.nb_drones == 0:
             raise ParseError(None, "'nb_drones' is missing")
         if self.start is None:
@@ -33,12 +35,27 @@ class MapParser:
         if self.end is None:
             raise ParseError(None, "'end_hub' is missing")
 
+    def _build_graph(self) -> Graph:
+        """Crea Graph con i dati raccolti dal parsing."""
+        if self.start is None or self.end is None:
+            raise ParseError(None, "start or end zone is missing")
+        graph = Graph(
+            zones=self.zones,
+            connections=self.connections,
+            nb_drones=self.nb_drones,
+            start=self.start,
+            end=self.end,
+        )
+        return graph
+
     def parse_file(self, path: str) -> Graph:
+        """Apre il file config ed esegue il parsing su ogni riga,
+        successivamente valida i dati e crea il Graph."""
         with open(path, encoding="utf-8") as f:
             for line, raw in enumerate(f, start=1):
                 self._parse_line(line, raw)
         self._validate()
-        # return self._build_graph()
+        return self._build_graph()
 
     def _parse_line(self, line: int, raw: str) -> None:
         """Legge ogni riga del file config e le smista al parser appropriato"""

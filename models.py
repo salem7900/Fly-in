@@ -59,6 +59,10 @@ class Connection:
     end_zone: str
     max_link_capacity: int = 1
 
+    def other(self, name: str) -> str:
+        """Restituisce l'altra zona in una Connection.'"""
+        return self.end_zone if name == self.start_zone else self.start_zone
+
 
 class Graph:
     """Da fare"""
